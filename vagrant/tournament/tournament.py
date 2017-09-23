@@ -5,41 +5,45 @@
 
 import psycopg2
 import bleach
+import re
 
 
-def connect():
-    """Connect to the PostgreSQL database.  Returns a database connection."""
-    return psycopg2.connect("dbname=tournament")
+def connect(database_name):
+    """Connect to the PostgreSQL database. Returns a database connection."""
+    try:
+        db = psycopg2.connect("dbname={}".format(database_name))
+        c = db.cursor()
+        return db
+    except psycopg2.Error as e:
+        print "Unable to connect to database"
+        sys.exit(1)
 
+def send_query(query, params=()):
+    """Query the tournament database."""
+    res = []
+    
+    db = connect("tournament")
+    c = db.cursor()
+    c.execute(query, params)
+    if re.search("^SELECT", query):
+        res = c.fetchall()
+    else:
+        db.commit()
+    db.close()
+    return res
 
 def deleteMatches():
     """Remove all the match records from the database."""
-    db = connect()
-    c = db.cursor()
-    c.execute("DELETE FROM matches;")
-    c.execute("UPDATE players SET wins=0;")
-    db.commit()
-    db.close()
-
+    send_query("DELETE FROM matches;")
 
 def deletePlayers():
     """Remove all the player records from the database."""
-    db = connect()
-    c = db.cursor()
-    c.execute("DELETE FROM players;")
-    db.commit()
-    db.close()
-
+    send_query("DELETE FROM players;")
 
 def countPlayers():
     """Returns the number of players currently registered."""
-    db = connect()
-    c = db.cursor()
-    c.execute("SELECT COUNT(*) FROM players GROUP BY id;")
-    ids = c.fetchall()
-    db.close()
+    ids = send_query("SELECT COUNT(*) FROM players GROUP BY player_id;")
     return len(ids)
-
 
 def registerPlayer(name):
     """Adds a player to the tournament database.
@@ -50,12 +54,7 @@ def registerPlayer(name):
     Args:
       name: the player's full name (need not be unique).
     """
-    db = connect()
-    c = db.cursor()
-    c.execute("INSERT INTO players (name, wins) VALUES (%s, 0)", (bleach.clean(name), ))
-    db.commit()
-    db.close()
-
+    send_query("INSERT INTO players (name) VALUES (%s)", (bleach.clean(name), ))
 
 def playerStandings():
     """Returns a list of the players and their win records, sorted by wins.
@@ -70,11 +69,7 @@ def playerStandings():
         wins: the number of matches the player has won
         matches: the number of matches the player has played
     """
-    db = connect()
-    c = db.cursor()
-    c.execute("SELECT * FROM standings;")
-    standings = c.fetchall();
-    db.close()
+    standings = send_query("SELECT * FROM standings;")
     return standings
 
 def reportMatch(winner, loser):
@@ -84,13 +79,7 @@ def reportMatch(winner, loser):
       winner:  the id number of the player who won
       loser:  the id number of the player who lost
     """
-    db = connect()
-    c = db.cursor()
-    c.execute("UPDATE players SET wins=wins+1 WHERE id=%s", (winner, ))
-    c.execute("INSERT INTO matches (player_a, player_b) VALUES (%s, %s);", (winner, loser))
-    db.commit()
-    db.close()
- 
+    send_query("INSERT INTO matches (winner_id, loser_id) VALUES (%s, %s);", (winner, loser)) 
  
 def swissPairings():
     """Returns a list of pairs of players for the next round of a match.
@@ -107,11 +96,7 @@ def swissPairings():
         id2: the second player's unique id
         name2: the second player's name
     """
-    db = connect()
-    c = db.cursor()
-    c.execute("SELECT * FROM players ORDER BY wins DESC;")
-    players = c.fetchall()
-    db.close()
+    players = send_query("SELECT * FROM wins ORDER BY num_wins DESC;")
 
     pairings = []
     idx = 0
