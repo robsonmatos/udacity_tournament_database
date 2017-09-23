@@ -13,20 +13,28 @@ CREATE DATABASE tournament;
 \c tournament;
 
 CREATE TABLE players (
-	id SERIAL PRIMARY KEY,
-	name TEXT,
-	wins INT);
+	player_id SERIAL PRIMARY KEY,
+	name TEXT);
 
 CREATE TABLE matches (
-	id SERIAL PRIMARY KEY,
-	player_a SERIAL REFERENCES players(id),
-	player_b SERIAL REFERENCES players(id),
-	CONSTRAINT dup_player CHECK (player_a <> player_b));
+	match_id SERIAL PRIMARY KEY,
+	winner_id SERIAL REFERENCES players(player_id),
+	loser_id SERIAL REFERENCES players(player_id),
+	CONSTRAINT duplicate CHECK (winner_id<>loser_id));
+
+CREATE VIEW wins AS
+	SELECT players.player_id, players.name, COUNT(matches.match_id) AS num_wins
+	FROM players 
+	LEFT JOIN matches ON players.player_id=matches.winner_id
+	GROUP BY players.player_id
+	ORDER BY players.player_id;
 
 CREATE VIEW standings AS
-	SELECT players.id, players.name, players.wins, count(matches.id) 
-	FROM players LEFT JOIN matches 
-	ON players.id=matches.player_a 
-	OR players.id=matches.player_b
-	GROUP BY players.id, players.name, players.wins
-	ORDER BY count(matches.id);
+	SELECT cnt_matches.player_id, cnt_matches.name, wins.num_wins, cnt_matches.num_matches
+	FROM (SELECT players.player_id, players.name, COUNT(matches.match_id) AS num_matches
+			FROM players 
+			LEFT JOIN matches 
+			ON players.player_id=matches.winner_id
+			OR players.player_id=matches.loser_id
+			GROUP BY players.player_id, players.name) AS cnt_matches
+	JOIN wins ON cnt_matches.player_id=wins.player_id;
